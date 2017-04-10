@@ -6,8 +6,9 @@ Florian Faissole, Inria-LRI.
 
 You need the following dependencies:
 
-  -math-comp 1.6.1: http://math-comp.github.io/math-comp/
-  -Coquelicot 2.1.2: https://gforge.inria.fr/frs/?group_id=3599
+ 1)math-comp 1.6.1: http://math-comp.github.io/math-comp/
+ 
+ 2)Coquelicot 2.1.2: https://gforge.inria.fr/frs/?group_id=3599
   
   
 
