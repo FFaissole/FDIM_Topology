@@ -1,6 +1,6 @@
-Finite dimensional subspaces of Hilbert spaces in Coq. 
+#Finite dimensional subspaces of Hilbert spaces in Coq. 
 
-Florian Faissole, Inria-LRI. 
+#Florian Faissole, Inria-LRI. 
 
 #Build
 
