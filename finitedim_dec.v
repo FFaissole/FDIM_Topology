@@ -14,6 +14,9 @@ COPYING file for more details.
 *)
 
 
+(** * Finite dimensional subspaces of Hilbert spaces are closed: 
+  proof with decidability hypotheses *)
+
 Require Export Coquelicot.Coquelicot.
 Require Export Reals.
 Require Export mathcomp.ssreflect.ssreflect.
@@ -21,13 +24,204 @@ Require Export FunctionalExtensionality.
 Require Export hilbert.
 Require Import Decidable.
 Require Export lax_milgram.
-Require Import Classical.
 
-(** * Finite dimensional subspaces *)
+(** * Definitions *)
+Section FDIM_dec_f_zero.
+
+Context {E : Hilbert}.
+
+Variable phi : E -> Prop.
+Variable dim:nat.
+Variable B: nat -> E.
 
 
-(** Lemma about distributivity of inner product on sums *)
-Lemma inner_sum_n {E : Hilbert} : forall m f (x : E),
+
+Definition phi_FDIM_def (p : E -> Prop) := match (eq_nat_dec dim 0) with
+              | left _ => forall u, p u <-> u = zero
+              | right _ => forall u, p u <-> exists L : nat -> R,
+           u = sum_n (fun n => scal (L n) (B n)) (dim-1)%nat
+         end.
+
+Hypothesis phi_FDIM: phi_FDIM_def phi.
+
+
+(** * Decidability preliminaries *)
+
+Hypothesis Hdec : forall x:E, decidable (phi x).
+
+Lemma Dec_nndec : forall f, decidable (f_phi_neq_zero phi f)
+                  <-> decidable (f_phi_neq_zero (fun x:E => ~~phi x) f).
+Proof.
+intros f.
+split.
+intro H.
+destruct H.
+left.
+unfold f_phi_neq_zero in *.
+destruct H as (v,H).
+exists v.
+intuition.
+right.
+unfold f_phi_neq_zero in *.
+intro Hf.
+destruct Hf as (v,Hf).
+apply H.
+exists v; intuition.
+intro H.
+destruct H.
+left.
+unfold f_phi_neq_zero in *.
+destruct H as (v,H).
+exists v; intuition.
+right.
+intro Hf.
+unfold f_phi_neq_zero in *.
+apply H.
+destruct Hf as (v,Hf).
+exists v; intuition.
+Qed.
+
+Lemma clm_sum_n: forall (f : topo_dual E) m C L,
+    f (sum_n (fun n => scal (L n) (C n)) m)
+      = sum_n (fun n => scal (L n) (f (C n))) m.
+Proof.
+intros f m C L; induction m.
+rewrite 2!sum_O.
+apply (Lf _ _ f).
+rewrite 2!sum_Sn.
+rewrite (proj1 (Lf _ _ f)).
+f_equal.
+exact IHm.
+apply (Lf _ _ f).
+Qed.
+
+Lemma phi_B_aux: forall i m, ( i <= m)%nat ->
+ B i = sum_n (fun n : nat => scal
+     (match (eq_nat_dec i n) with
+       | left _ => 1
+       | _ => 0
+     end) (B n)) m.
+Proof.
+induction m.
+intros Hi.
+replace i with 0%nat by auto with zarith.
+rewrite sum_O.
+simpl.
+now rewrite scal_one.
+intros Hi; case (le_lt_or_eq _ _ Hi); intros Hi2.
+rewrite IHm.
+2: auto with zarith.
+rewrite sum_Sn.
+replace (scal (match (eq_nat_dec i (S m)) with
+  | left _ => 1 | _ => 0 end) (B (S m))) with (@zero E).
+apply sym_eq, plus_zero_r.
+case (eq_nat_dec i (S m)); intros T.
+contradict Hi2; auto with zarith.
+now rewrite scal_zero_l.
+rewrite <- (plus_zero_l (B i)).
+rewrite sum_Sn.
+rewrite Hi2; f_equal.
+apply sym_eq.
+apply: sum_n_eq_zero.
+intros k Hk.
+case eq_nat_dec; try easy.
+intros Hk2; contradict Hk; auto with zarith.
+intros _; apply: scal_zero_l.
+case eq_nat_dec.
+intros _; now rewrite scal_one.
+intros H; now contradict H.
+Qed.
+
+Lemma phi_B: (0 < dim)%nat -> forall i:nat, (i <= dim-1)%nat ->
+   phi (B i).
+Proof.
+intros Hdim i Hi.
+unfold phi_FDIM_def in phi_FDIM.
+destruct (eq_nat_dec dim 0).
+exfalso.
+auto with zarith.
+apply phi_FDIM.
+eexists.
+now apply phi_B_aux.
+Qed.
+
+
+Lemma EVN_dec_f_phi_zero_aux:
+   forall f : topo_dual E,
+    (exists i:nat, (i <= dim-1)%nat /\ f (B i) <> 0)
+       \/ (forall i, (i <= dim-1)%nat -> f (B i) = 0).
+Proof.
+intros f.
+clear phi_FDIM; induction dim.
+case (Req_dec (f (B 0)) 0); intros T.
+right; intros i Hi.
+now replace i with 0%nat by auto with zarith.
+left; exists 0%nat.
+split; try auto with zarith; assumption.
+case IHn.
+intros (i,(Hi1,Hi2)).
+left; exists i.
+split; try assumption.
+auto with zarith.
+intros T1.
+case (Req_dec (f (B (S n -1))) 0); intros T2.
+right; intros i Hi.
+case (le_lt_or_eq i (S n - 1)).
+auto with zarith.
+intros Hi2.
+apply T1. auto with zarith.
+intros Hi2; rewrite Hi2; assumption.
+left.
+exists (S n - 1)%nat; split; try assumption.
+auto with zarith.
+Qed.
+
+Lemma EVN_dec_f_phi_zero:
+ forall f : topo_dual E,
+    decidable (f_phi_neq_zero phi f).
+Proof.
+intros f; unfold f_phi_neq_zero.
+generalize phi_FDIM; intros phi_FDIM'.
+unfold phi_FDIM_def in phi_FDIM'.
+destruct (eq_nat_dec dim 0).
+right.
+intro Hf.
+destruct Hf as (u,(Hf1,Hf2)).
+apply logic_dec_notnot in Hf1.
+apply (phi_FDIM' u) in Hf1.
+rewrite Hf1 in Hf2.
+absurd (f zero = 0).
+trivial.
+apply: is_linear_mapping_zero.
+apply f.
+trivial.
+case (EVN_dec_f_phi_zero_aux f).
+intros (i,(Hi1,Hi2)).
+left.
+exists (B i).
+rewrite <- (logic_dec_notnot E phi).
+split; try assumption.
+apply phi_B.
+auto with zarith.
+trivial.
+trivial.
+intros Hi.
+right.
+intros (u,(Hu1,Hu2)).
+apply Hu2.
+rewrite <- (logic_dec_notnot E phi) in Hu1.
+apply phi_FDIM' in Hu1.
+destruct Hu1 as (l,HL).
+rewrite HL.
+rewrite clm_sum_n.
+apply: sum_n_eq_zero.
+intros k Hk.
+rewrite Hi; try easy.
+apply: scal_zero_r.
+trivial.
+Qed.
+
+Lemma inner_sum_n: forall m f (x : E),
     inner (sum_n (fun n => f n) m) x
       = sum_n (fun n => inner (f n) x) m.
 Proof.
@@ -40,11 +234,13 @@ rewrite IHm.
 reflexivity.
 Qed.
 
+End FDIM_dec_f_zero.
+
 
 Section FDIM_span.
 
-(** * Finite dimensional subspaces *) 
 Context{E : Hilbert}.
+
 Definition phi_FDIM (p : E -> Prop) (dim : nat) (B : nat -> E)
           := match (eq_nat_dec dim 0) with
               | left _ => forall u, p u <-> u = zero
@@ -56,14 +252,86 @@ Definition phi_FDIM (p : E -> Prop) (dim : nat) (B : nat -> E)
 
 Definition span (u : E) := fun x:E => (exists (l : R), x = scal l u).
 
+(** decidability of span *)
+Lemma span_dec : forall u:E, forall x:E, decidable ((span u) x).
+Proof.
+intros u x.
+destruct (is_zero_dec u).
+destruct (is_zero_dec x).
+left.
+exists 0%R.
+rewrite scal_zero_l.
+trivial.
+right.
+intro HF.
+destruct HF as (l,Hl).
+rewrite H in Hl.
+rewrite scal_zero_r in Hl.
+intuition.
+case (is_zero_dec (minus (scal (inner u u) x) (scal (inner x u) u))) => HT.
+left.
+unfold minus in HT.
+assert (HT' : (scal (inner u u) x) = (scal (inner x u) u)).
+apply plus_reg_r with (opp ((scal (inner x u) u))).
+rewrite plus_opp_r.
+trivial.
+assert (HT'' : x = scal ((inner x u) / (inner u u)) u).
+unfold Rdiv.
+rewrite Rmult_comm.
+replace (/ inner u u * inner x u) with (mult (/ inner u u) (inner x u)).
+rewrite <- scal_assoc.
+rewrite <- HT'.
+rewrite scal_assoc.
+unfold mult.
+simpl.
+rewrite Rinv_l.
+rewrite scal_one.
+reflexivity.
+rewrite <- squared_norm.
+replace 0 with (Hnorm u * 0) by ring.
+intro F.
+ring_simplify in F.
+generalize (norm_gt_0 u H) => HO.
+unfold norm in HO.
+simpl in HO.
+replace (Hnorm u ^ 2) with (Rsqr (Hnorm u)) in F.
+apply Rsqr_0_uniq in F.
+rewrite F in HO.
+apply (Rlt_irrefl 0 HO).
+unfold Rsqr.
+unfold pow.
+ring.
+unfold mult.
+simpl.
+reflexivity.
+now exists (inner x u / inner u u).
+right.
+intro H0.
+destruct H0 as (l,H0).
+rewrite H0 in HT.
+apply HT.
+unfold minus.
+apply plus_reg_r with (scal (inner (scal l u) u) u).
+rewrite <- Hierarchy.plus_assoc.
+rewrite plus_opp_l.
+rewrite plus_zero_r.
+rewrite plus_zero_l.
+rewrite inner_scal_l.
+rewrite scal_assoc.
+rewrite Rmult_comm.
+unfold mult.
+simpl.
+reflexivity.
+Qed.
+
 (** clean_scal transformer *)
 Definition clean_scal (u : E) (F : (E -> Prop) -> Prop):
                        (R -> Prop) -> Prop
      := fun A : (R -> Prop) => exists V : E -> Prop,
            F V /\ (forall l,  V (scal l u) -> A l).
 
-Lemma proper_scal' (u : E) (F : (E -> Prop) -> Prop) :
-  ProperFilter F -> (forall V : E -> Prop, F V -> exists x : E,
+Lemma proper_proj' (u : E) (F : (E -> Prop) -> Prop) :
+  ProperFilter F -> (forall V : E -> Prop, F V -> ~~ exists x : E,
                             V x /\ span u x)
                     ->  ProperFilter' (clean_scal u F).
 Proof.
@@ -73,10 +341,13 @@ constructor.
 intro Hkk.
 unfold clean_scal in Hkk.
 destruct Hkk as (V,(H1,H2)).
-specialize (Hsp V H1).
-destruct Hsp as (k,(Hk,(l,Hkl))).
+specialize (Hsp V).
+apply Hsp.
+trivial.
+intro Hj.
+destruct Hj as (j,(Hj,(l,Hj'))).
 apply (H2 l).
-now rewrite Hkl in Hk.
+now rewrite <- Hj'.
 constructor.
 unfold clean_scal.
 exists (fun _ : E => True).
@@ -104,7 +375,7 @@ apply HImp.
 now apply HP2.
 Qed.
 
-Lemma proper_scal (u : E) (F : (E -> Prop) -> Prop) :
+Lemma proper_proj (u : E) (F : (E -> Prop) -> Prop) :
   ProperFilter F -> (forall V : E -> Prop, F V ->  exists x : E,
                             V x /\ span u x)
                     ->  ProperFilter (clean_scal u F).
@@ -234,14 +505,12 @@ unfold Hnorm.
 now apply norm_gt_0.
 Qed.
 
-(*
-
 Hypothesis Hdec3 : forall (u : E) (V : E -> Prop),
              decidable (exists x : E, V x /\ span u x).
 
-Hypothesis Hdec4 : forall u:E, forall x:E, decidable (span u x).*)
+Hypothesis Hdec4 : forall u:E, forall x:E, decidable (span u x).
 
-Lemma my_complete_classical_def (u : E) : my_complete (span u) ->
+Lemma my_complete_decdec (u : E) : my_complete (span u) ->
          (forall F : (E -> Prop) -> Prop,
              ProperFilter F -> cauchy F ->
              (forall P : E -> Prop, F P ->
@@ -250,13 +519,17 @@ Proof.
 intros Hmc F PF cF HFF.
 assert (Hdsnn : forall x:E, span u x <-> ~~ span u x).
 intros x.
-split. 
-intros S Hf; apply Hf; trivial.
-apply NNPP.
-apply Hmc; trivial.
+rewrite (logic_dec_notnot _ (span u)).
+intuition.
+trivial.
+rewrite Hdsnn.
+intro Hk.
+apply Hk.
+apply Hmc; try trivial.
 intros P HP.
 specialize (HFF P HP).
-intros S; apply S; trivial.
+intro H; apply H.
+trivial.
 Qed.
 
 (** closedness of the linear span *)
@@ -265,14 +538,14 @@ Proof.
 destruct (is_zero_dec u).
 assert (Hdsnn : forall x:E, span u x <-> ~~ span u x).
 intros x.
-split. 
-intros S Hf; apply Hf; trivial.
-apply NNPP.
+rewrite (logic_dec_notnot _ (span u)).
+intuition.
+trivial.
 assert (Hds2 : my_complete (span u) <->
                my_complete (fun x:E => ~~ span u x)).
 split.
 intro Hh.
-generalize my_complete_classical_def => MCDD.
+generalize my_complete_decdec => MCDD.
 unfold my_complete.
 intros F PF cF HFF.
 apply Hdsnn.
@@ -357,10 +630,11 @@ exists (lim ff).
 assert (Hk : forall P : Hilbert_CompleteSpace -> Prop,
     F P -> (exists x : Hilbert_CompleteSpace, P x /\ span u x)).
 intros P HP.
-apply NNPP.
-now apply H. 
+apply logic_dec_notnot.
+trivial.
+now apply H.
 clear H.
-generalize (proper_scal u F PF Hk) => ffP.
+generalize (proper_proj u F PF Hk) => ffP.
 generalize (cauchy_scal u F HO PF CF Hk) => ffC.
 fold ff in ffP, ffC.
 apply ball_eq.
@@ -409,7 +683,7 @@ simpl in Hx02, Hv2.
 unfold ball in Hx02; simpl in Hx02.
 unfold AbsRing_ball in Hv2; simpl in Hv2.
 clear Hx01 H HC P2 Hx1 Hv1.
-clear PF CF Hk ffP ffC.
+clear PF CF Hk ffP ffC Hdec3.
 assert (HX2 : Hnorm (minus (scal lx u) (scal (lim ff) u)) < eu / 2).
 replace (minus (scal lx u) (scal (lim ff) u))
    with (scal (minus lx (lim ff)) u).
@@ -480,9 +754,9 @@ Qed.
 
 End FDIM_span.
 
-(** * Orthogonal projection *)
 
 Section FDIM_sum.
+(** * Orthogonal projection *)
 
 Context {E : Hilbert}.
 
@@ -493,6 +767,9 @@ Definition proj (V : E -> Prop) :=
 Definition proj' (V : E -> Prop) := fun u : E => minus u (proj V u).
 
 Variable G : E -> Prop.
+
+Hypothesis Hs : forall u:E, (forall eps:posreal,
+        decidable (exists w:E, G w /\ norm (minus u w) < eps)).
 
 Hypothesis HcG : my_complete G.
 
@@ -520,8 +797,6 @@ assert (exists! v : E, G v /\ norm (minus x v)
 apply: ortho_projection_subspace; try assumption.
 apply my_complete_complete.
 trivial.
-intros eps.
-apply classic.
 destruct H as (c,H).
 assert (H' := H).
 apply iota_elim in H'.
@@ -530,6 +805,7 @@ apply H.
 Qed.
 
 (** clean_proj and clean_proj' transformers *)
+
 Definition clean_proj (u : E) (F : (E -> Prop) -> Prop) :
                    (E -> Prop) -> Prop
         := filtermap (proj G) F.
@@ -564,7 +840,7 @@ rewrite Hin.
 reflexivity.
 Qed.
 
-Lemma PFsum : forall x, plus (proj G x) (proj' G x) = x.
+Lemma proj_sum : forall x, plus (proj G x) (proj' G x) = x.
 Proof.
 intros x.
 unfold proj'.
@@ -588,7 +864,6 @@ assert (Hu : exists! v:E,
           G v /\ norm (minus x v)
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus x w))).
 apply: ortho_projection_subspace; try easy.
-intros eps; apply classic.
 destruct Hu as (k,Hk).
 assert (Hk2 := Hk).
 apply iota_elim in Hk.
@@ -622,7 +897,6 @@ assert (Hu : exists! v:E,
           G v /\ norm (minus x v)
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus x w))).
 apply: ortho_projection_subspace; try easy.
-intros eps; apply classic.
 destruct Hu as (k,Hk).
 assert (Hk2 := Hk).
 apply iota_elim in Hk.
@@ -654,21 +928,18 @@ assert (H : exists! v:E,
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus (plus x y) w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct H as (zxy,Hxy).
 assert (H : exists! v:E,
           G v /\ norm (minus x v)
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus x w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct H as (zx,Hx).
 assert (H : exists! v:E,
           G v /\ norm (minus y v)
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus y w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct H as (zy,Hy).
 assert (H : unique (fun v : E =>
          G v /\
@@ -703,7 +974,7 @@ rewrite opp_opp.
 reflexivity.
 specialize (CC Hgs).
 clear Hgs.
-apply CC.
+apply CC.(** linearity of proj *)
 intros w Hw.
 rewrite inner_plus_l.
 rewrite inner_plus_l.
@@ -730,7 +1001,6 @@ assert (Hn : exists! t:E, G t /\ norm (minus (plus x y) t) =
 apply: ortho_projection_subspace.
 trivial.
 apply my_complete_complete.
-intros eps; apply classic.
 trivial.
 destruct Hn as (p,Hn).
 assert (Hn' := Hn).
@@ -809,14 +1079,12 @@ assert (H : exists! v:E,
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus (scal l x) w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct H as (z,Hz).
 assert (H : exists! v:E,
           G v /\ norm (minus x v)
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus x w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct H as (s,H0).
 assert (H : unique (fun v : E =>
          G v /\
@@ -859,7 +1127,6 @@ assert (Hn : exists! t:E, G t /\ norm (minus (scal l x) t) =
 apply: ortho_projection_subspace.
 trivial.
 apply my_complete_complete.
-intros eps; apply classic.
 trivial.
 destruct Hn as (p,Hn).
 assert (Hn' := Hn).
@@ -1044,7 +1311,6 @@ assert (He : exists! v:E,
         = Glb_Rbar (fun r => exists w:E, G w /\ r = norm (minus x w))).
 apply: ortho_projection_subspace; try easy.
 apply my_complete_complete.
-intros eps; apply classic.
 destruct He as (c,He).
 assert (He' := He).
 apply iota_elim in He.
@@ -1071,7 +1337,7 @@ apply Rle_refl.
 apply Cauchy_Schwartz_with_norm.
 Qed.
 
-Lemma proj_dist (e : posreal) :  forall x y: E,
+Lemma dist_proj (e : posreal) :  forall x y: E,
                   Hierarchy.ball x e y -> (Hierarchy.ball (proj G x) e
                                                           (proj G y)).
 Proof.
@@ -1107,7 +1373,7 @@ exists (proj G x).
 unfold clean_proj, filtermap.
 apply filter_imp with (Hierarchy.ball x e); try assumption.
 intros y Hy.
-now apply proj_dist.
+now apply dist_proj.
 Qed.
 
 Lemma cauchy_proj' (u : E) (F : (E -> Prop) -> Prop):
@@ -1153,7 +1419,7 @@ simpl in Hy.
 now unfold ball in Hy.
 replace (Hnorm (minus (proj G y) (proj G x))) with
         (Hnorm (minus (proj G x) (proj G y))).
-generalize (proj_dist (mkposreal (e/2) H2) x y) => Hdi.
+generalize (dist_proj (mkposreal (e/2) H2) x y) => Hdi.
 unfold Hierarchy.ball in Hdi; simpl in Hdi.
 unfold ball in Hdi; simpl in Hdi.
 apply Hdi.
@@ -1162,17 +1428,23 @@ rewrite norm_minus_sym.
 reflexivity.
 Qed.
 
+Hypothesis Hdec3s : forall (u : E) (V : E -> Prop),
+             decidable (exists x : E, V x /\ span u x).
+
+Hypothesis Hdec4s : forall u:E, forall x:E, decidable (span u x).
+Hypothesis Hdec5s : forall (u : E) (V : E -> Prop),
+             decidable (exists x : E, V x /\
+                   (exists g w : E, G g /\
+                   span u w /\ x = plus g w)).
+
 (** sum of closed subset and linear span is closed, with 
 continuity proofs of proj *)
 Lemma sum_span_cl_cl : forall (u : E),
-           orth_compl G u ->
+          (forall x:E, decidable (G x)) -> orth_compl G u ->
          my_complete (fun x:E => exists g : E, exists w : E,
                       G g /\ span u w /\ x = plus g w).
 Proof.
-assert (GD : forall x:E, decidable (G x)).
-intros x; red.
-apply classic.
-intros u Go.
+intros u GD Go.
 case (GD u) => GU.
 generalize (@direct_sumable_with_orth_compl E G) => Hz.
 unfold direct_sumable in Hz.
@@ -1254,7 +1526,7 @@ apply e.
 specialize (Hg (mkposreal (e/2) H2p)).
 apply filter_imp with (Hierarchy.ball (Hierarchy.lim F) (e/2)).
 intros x HX.
-apply proj_dist.
+apply dist_proj.
 unfold Hierarchy.ball.
 simpl.
 unfold ball; simpl.
@@ -1280,14 +1552,15 @@ assert (cF'' : cauchy Fw'').
 apply cauchy_proj'.
 trivial. trivial.
 generalize (@complete_cauchy _ Fw'' Fw''PF cF'') => Hgw''.
-generalize (span_closed u) => Hj.
+generalize (span_closed Hdec3s Hdec4s u) => Hj.
 unfold my_complete in Hj.
 assert (H2 : forall P : E -> Prop,
     F P ->
     (exists x : E, P x /\
      (exists g w : E, G g /\ span u w /\ x = plus g w))).
 intros P HP.
-apply NNPP.
+apply logic_dec_notnot.
+trivial.
 now apply H.
 assert (H3 : forall P, Fw'' P -> exists x : E, P x /\ span u x).
 intros V HV.
@@ -1381,7 +1654,8 @@ assert (H2 : forall P : E -> Prop,
      (exists g w : E, G g /\
                    span u w /\ x = plus g w))).
 intros P HP.
-apply NNPP.
+apply logic_dec_notnot.
+trivial.
 now apply H.
 simpl in Hgw', Hgw''.
 specialize (H2 (fun x : E => (Hierarchy.ball (Hierarchy.lim Fw') (e/4) (proj G x) /\
@@ -1438,17 +1712,20 @@ apply Rle_lt_trans with (plus (Hnorm (plus (Hierarchy.lim Fw')
        (Hnorm (plus (Hierarchy.lim Fw'') (opp (proj' G x2))))).
 apply: norm_triangle.
 trivial.
-rewrite PFsum.
+rewrite proj_sum.
 reflexivity.
 Qed.
 
 End FDIM_sum.
 
-(** Finite dim subspace is the sum of linear span and finite dim *)
+
 
 Section FDIM_closed.
 
 Context {E : Hilbert}.
+
+Hypothesis Hdec3c : forall (u : E) (V : E -> Prop),
+             decidable (exists x : E, V x /\ span u x).
 
 Definition B_ortho (B : nat -> E) := forall (i : nat), Hnorm (B i) = 1
                      /\ (forall i j, i <> j ->
@@ -1602,6 +1879,170 @@ rewrite Hierarchy.plus_comm.
 reflexivity.
 Qed.
 
+(** * Decidability of the belonging to finite dim subspace *)
+
+Lemma FDIM_dec : forall (d:nat) (Phi : E -> Prop) (b : nat -> E),
+                phi_FDIM Phi d b -> B_ortho b ->
+                forall x:E, decidable (Phi x).
+Proof.
+intros d Phi b phi_EV B_ortho x.
+unfold phi_FDIM in phi_EV.
+destruct (eq_nat_dec d 0).
+specialize (phi_EV x).
+destruct (is_zero_dec x).
+left.
+now apply phi_EV.
+right.
+intro Hf.
+apply phi_EV in Hf.
+rewrite Hf in H.
+intuition.
+case (is_zero_dec (minus x
+     (sum_n (fun i => scal (inner x (b i)) (b i)) (d-1))))
+     => HT.
+left.
+rewrite (phi_EV x).
+assert (x = sum_n (fun i : nat => scal (inner x (b i)) (b i)) (d-1)).
+apply plus_reg_r with
+      (opp (sum_n (fun i : nat => scal (inner x (b i)) (b i)) (d-1))).
+rewrite plus_opp_r.
+now unfold minus in HT.
+now exists (fun n:nat => inner x (b n)).
+right.
+intro H.
+apply (phi_EV x) in H.
+destruct H as (L,H).
+rewrite H in HT.
+apply HT.
+unfold minus.
+apply plus_reg_r with
+      ((sum_n
+        (fun i : nat =>
+         scal (inner (sum_n (fun n : nat => scal (L n) (b n)) (d-1)) (b i))
+           (b i)) (d-1))).
+simpl.
+rewrite <- Hierarchy.plus_assoc.
+simpl.
+rewrite plus_opp_l.
+rewrite plus_zero_l.
+rewrite plus_zero_r.
+apply sum_n_ext_loc.
+intros m Hm.
+induction m.
+rewrite inner_sum_n.
+unfold sum_n.
+rewrite (sum_n_m_Chasles _ 0 0 (d-1)); try auto with zarith.
+rewrite scal_distr_r.
+replace (scal (L 0%nat) (b O)) with (plus (scal (L 0%nat) (b O)) zero)
+         by (rewrite plus_zero_r; reflexivity).
+f_equal.
+unfold sum_n_m; simpl.
+unfold Iter.iter_nat.
+simpl.
+rewrite plus_zero_r.
+rewrite inner_scal_l.
+rewrite <- squared_norm.
+rewrite (proj1 (B_ortho O)).
+replace (L 0%nat * (1 * 1)) with (L 0%nat) by ring.
+reflexivity.
+assert ((@zero E) = (sum_n_m (fun n => (@zero E)) 1 (d-1))).
+rewrite sum_n_m_const_zero.
+reflexivity.
+rewrite H0.
+assert (sum_n_m (fun _ : nat => zero) 1 (d-1) =
+        scal (sum_n_m (fun _ : nat => zero) 1 (d-1)) (b O)).
+repeat (rewrite sum_n_m_const_zero).
+rewrite scal_zero_l.
+reflexivity.
+rewrite H1.
+f_equal; try reflexivity.
+apply sum_n_m_ext_loc.
+intros k Hk.
+assert (H' : k <> O).
+auto with zarith.
+apply ((proj2 (B_ortho O))) in H'.
+rewrite inner_scal_l.
+rewrite H'.
+rewrite Rmult_0_r.
+reflexivity.
+f_equal.
+rewrite inner_sum_n.
+replace (L (S m)) with (sum_n (fun n0 => match (le_gt_dec n0 (S m)) with
+                               |left _ => match (eq_nat_dec n0 (S m)) with
+                                    |left _ => L n0 |right _ => 0 end
+                               |right _ => 0
+                               end) (d-1)).
+apply sum_n_ext_loc.
+intros no Hno.
+destruct (le_gt_dec no (S m)).
+destruct (eq_nat_dec no (S m)).
+rewrite e.
+rewrite inner_scal_l.
+rewrite <- squared_norm.
+rewrite (proj1 (B_ortho (S m))).
+ring_simplify.
+reflexivity.
+rewrite inner_scal_l.
+rewrite ((proj2 (B_ortho (S m))) no); try assumption.
+ring_simplify.
+reflexivity.
+rewrite inner_scal_l.
+rewrite ((proj2 (B_ortho (S m))) no); try assumption.
+ring_simplify. reflexivity.
+auto with zarith.
+unfold sum_n.
+rewrite (sum_n_m_Chasles _ 0 (S m) (d-1)); try auto with zarith.
+rewrite (sum_n_m_Chasles _ 0 m (S m)); try auto with zarith.
+replace (L (S m)) with (plus (plus 0 (L (S m))) 0).
+f_equal.
+f_equal.
+replace 0%R with (sum_n_m (fun n => 0%R) 0 m).
+apply sum_n_m_ext_loc.
+intros k Hk.
+destruct (le_gt_dec k (S m)).
+destruct (eq_nat_dec k (S m)).
+exfalso.
+intuition.
+rewrite sum_n_m_const_zero.
+reflexivity.
+exfalso.
+intuition.
+rewrite sum_n_m_const_zero.
+reflexivity.
+replace (L (S m)) with (sum_n_m (fun n0 => match (le_gt_dec n0 (S m)) with
+                               |left _ => match (eq_nat_dec n0 (S m)) with
+                                    |left _ => L n0 |right _ => 0 end
+                               |right _ => 0
+                               end) (S m) (S m)).
+apply sum_n_m_ext_loc.
+intros no Hno.
+destruct (le_gt_dec no (S m)).
+destruct (eq_nat_dec no (S m)).
+reflexivity.
+reflexivity.
+reflexivity.
+rewrite sum_n_n.
+destruct (le_gt_dec (S m) (S m)).
+destruct (eq_nat_dec (S m) (S m)).
+reflexivity.
+exfalso; auto with zarith.
+exfalso; auto with zarith.
+replace 0 with (sum_n_m (fun n => 0) (S (S m)) (d-1)).
+apply sum_n_m_ext_loc.
+intros k Hk.
+destruct (le_gt_dec k (S m)).
+destruct (eq_nat_dec k (S m)).
+exfalso; intuition.
+rewrite sum_n_m_const_zero.
+reflexivity.
+rewrite sum_n_m_const_zero.
+reflexivity.
+rewrite sum_n_m_const_zero.
+reflexivity.
+rewrite plus_zero_l.
+now rewrite plus_zero_r.
+Qed.
+
 (** * Finite subspace is ModuleSpace-compatible *)
 
 Lemma FDIM_comp_m : forall (d:nat) (phi : E -> Prop) (b : nat -> E),
@@ -1675,12 +2116,21 @@ Qed.
 
 (** * Finite dim subspace is closed *)
 
+Hypothesis Hs : forall phi : E -> Prop, forall u:E, (forall eps:posreal,
+        decidable (exists w:E, phi w /\ norm (minus u w) < eps)).
+
+Hypothesis Hdec6f : forall phi : E -> Prop, forall (u : E) (V : E -> Prop),
+       decidable (exists x : E, V x /\ (exists g w : E,
+             phi g /\ span u w /\ x = plus g w)).
+
 Lemma FDIM_closed : forall (d : nat) (B : nat -> E),
                     forall Phi : E -> Prop,
+                   (forall u:E, (forall eps:posreal,
+                  decidable (exists w:E, Phi w /\ norm (minus u w) < eps))) ->
                    phi_FDIM Phi d B -> B_ortho B -> my_complete Phi.
 Proof.
 induction d.
-intros B Phi H B_ortho.
+intros B Phi HD H B_ortho.
 assert (Heq : forall u:E, Phi u <-> span zero u).
 intros u.
 split.
@@ -1722,8 +2172,10 @@ generalize HH2.
 generalize F PF cF.
 assert (my_complete ((@span E) zero)).
 apply span_closed.
+apply Hdec3c.
+apply span_dec.
 trivial.
-intros B Phi HS B_ortho.
+intros B Phi HD HS B_ortho.
 assert (P := HS).
 destruct (eq_nat_dec d 0).
 unfold phi_FDIM in HS.
@@ -1745,7 +2197,7 @@ apply HS.
 destruct Hsp as (l,Hsp).
 exists (fun n => l).
 now rewrite sum_O.
-generalize (@span_closed E (B 0%nat)) => SC.
+generalize (@span_closed E Hdec3c (span_dec) (B 0%nat)) => SC.
 intros F PF cF HF.
 apply HS'.
 apply SC; try easy.
@@ -1827,6 +2279,11 @@ apply PP.
 apply sum_span_cl_cl; trivial.
 apply IHd with B; trivial.
 apply FDIM_comp_m with d B; trivial.
+apply span_dec.
+generalize (FDIM_dec d phi_m) => Dm.
+specialize (Dm B P1 B_ortho).
+apply: Dm.
+trivial.
 auto with zarith.
 trivial.
 Qed.
